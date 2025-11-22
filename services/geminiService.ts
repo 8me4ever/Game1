@@ -94,7 +94,11 @@ export const generateItemIcon = async (imagePrompt: string): Promise<string | nu
       }
     }
     return null;
-  } catch (error) {
+  } catch (error: any) {
+    // Check for Rate Limit (429) or Quota issues and throw so App can backoff
+    if (error.status === 429 || error.code === 429 || error.message?.includes('429') || error.message?.includes('quota')) {
+        throw error;
+    }
     console.error("Error generating icon:", error);
     return null;
   }

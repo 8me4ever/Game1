@@ -11,7 +11,7 @@ import {
 import { MergeTile } from './components/MergeTile';
 import { RenovationView } from './components/RenovationView';
 import { generateTaskCompletionText, generateNextTask, generateItemIcon } from './services/geminiService';
-import { Sparkles, ScrollText, BookOpen, Ghost, Loader2, Share2, Check } from 'lucide-react';
+import { Sparkles, ScrollText, BookOpen, Ghost, Loader2, AlertTriangle } from 'lucide-react';
 import * as Icons from 'lucide-react';
 
 // Helper for initial state to ensure inventory is populated before first render
@@ -50,13 +50,15 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([{ id: 'init', text: "这间屋子充满了死气。你需要利用一切手段活下去...", type: "system" }]);
   const [completedTasksCount, setCompletedTasksCount] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false); 
-  const [showShareTooltip, setShowShareTooltip] = useState(false);
 
   // --- ASSET GENERATION STATE ---
   // Cache for generated images: itemId -> base64Url
   const [itemImages, setItemImages] = useState<Record<string, string>>({});
   const [isGeneratingAssets, setIsGeneratingAssets] = useState(false);
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  
   const generationQueueRef = useRef<MergeItemDef[]>([]);
+  const retryDelayRef = useRef(3000); // Start with 3s delay
 
   // --- ASSET MANAGER ---
   // On mount, queue up all item definitions for image generation if they don't exist
@@ -80,21 +82,39 @@ const App: React.FC = () => {
     if (isGeneratingAssets || generationQueueRef.current.length === 0) return;
 
     setIsGeneratingAssets(true);
-    const itemToGen = generationQueueRef.current.shift(); // Take first
+    // Peek at the first item, don't remove yet in case of error
+    const itemToGen = generationQueueRef.current[0];
 
-    if (itemToGen) {
+    try {
       const imageUrl = await generateItemIcon(itemToGen.imagePrompt);
       
       if (imageUrl) {
         setItemImages(prev => ({ ...prev, [itemToGen.id]: imageUrl }));
       }
-    }
 
-    setIsGeneratingAssets(false);
+      // Success! Remove from queue and reset delay
+      generationQueueRef.current.shift();
+      retryDelayRef.current = 3000; 
+      setIsRateLimited(false);
 
-    // Continue queue with a small delay
-    if (generationQueueRef.current.length > 0) {
-      setTimeout(() => processGenerationQueue(), 2000);
+      setIsGeneratingAssets(false);
+
+      // Continue queue with standard delay
+      if (generationQueueRef.current.length > 0) {
+        setTimeout(() => processGenerationQueue(), retryDelayRef.current);
+      }
+    } catch (error: any) {
+      // Handle Rate Limits (429)
+      console.warn(`Rate limit hit (or error). Backing off for ${retryDelayRef.current}ms...`);
+      setIsRateLimited(true);
+      setIsGeneratingAssets(false);
+      
+      // Exponential Backoff: double delay, cap at 60s
+      const nextDelay = Math.min(retryDelayRef.current * 2, 60000);
+      retryDelayRef.current = nextDelay;
+
+      // Retry the SAME item after delay
+      setTimeout(() => processGenerationQueue(), nextDelay);
     }
   };
 
@@ -323,15 +343,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleShare = () => {
-    const currentChapter = Math.floor(gameState.stars / 5) + 1;
-    const text = `我被困在《古宅回响》的第 ${currentChapter} 章... 已经收集了 ${gameState.stars} 个诅咒之星。你也来试试能不能活着出去？ #恐怖游戏`;
-    navigator.clipboard.writeText(text).then(() => {
-      setShowShareTooltip(true);
-      setTimeout(() => setShowShareTooltip(false), 2000);
-    });
-  };
-
 
   // --- RENDER ---
 
@@ -407,8 +418,12 @@ const App: React.FC = () => {
         </div>
         {/* Loading Indicator for Asset Gen */}
         {(generationQueueRef.current.length > 0 || isGeneratingAssets) && (
-            <div className="absolute right-2 top-2" title="正在生成资源...">
-                <Loader2 size={12} className="animate-spin text-slate-600"/>
+            <div className="absolute right-2 top-2" title={isRateLimited ? "API 限制，等待中..." : "正在生成资源..."}>
+                {isRateLimited ? (
+                    <AlertTriangle size={12} className="text-orange-500 animate-pulse" />
+                ) : (
+                    <Loader2 size={12} className="animate-spin text-slate-600"/>
+                )}
             </div>
         )}
       </div>
@@ -494,21 +509,6 @@ const App: React.FC = () => {
          <div className="flex flex-col items-center cursor-pointer hover:text-slate-400">
             <BookOpen size={20} />
             <span className="text-[10px] uppercase tracking-widest">魔导书</span>
-         </div>
-         
-         {/* SHARE BUTTON */}
-         <div 
-           className="flex flex-col items-center cursor-pointer hover:text-cyan-400 transition-colors"
-           onClick={handleShare}
-         >
-            {showShareTooltip ? <Check size={20} className="text-green-500"/> : <Share2 size={20} />}
-            <span className="text-[10px] uppercase tracking-widest">分享</span>
-            
-            {showShareTooltip && (
-               <div className="absolute -top-8 bg-slate-800 text-white text-xs py-1 px-2 rounded border border-slate-600 animate-bounce">
-                 已复制
-               </div>
-            )}
          </div>
       </div>
 

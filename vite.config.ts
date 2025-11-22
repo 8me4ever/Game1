@@ -4,15 +4,16 @@ import react from '@vitejs/plugin-react';
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
-  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
-  // Cast process to any to avoid "Property 'cwd' does not exist on type 'Process'" error
-  const env = loadEnv(mode, (process as any).cwd(), '');
+  const env = loadEnv(mode, '.', '');
   
   return {
     plugins: [react()],
     define: {
-      // Pass the API_KEY from Netlify environment to the client-side code safely
+      // Stringify the key so it is replaced literally in the code
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
     },
+    server: {
+      host: true
+    }
   };
 });

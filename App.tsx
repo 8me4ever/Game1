@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   GameState, GridSlot, ItemCategory, MergeItemDef, Task, LogEntry 
@@ -11,8 +10,7 @@ import {
 import { MergeTile } from './components/MergeTile';
 import { RenovationView } from './components/RenovationView';
 import { generateTaskCompletionText, generateNextTask, generateItemIcon } from './services/geminiService';
-import { Sparkles, ScrollText, BookOpen, Ghost, Loader2, AlertTriangle } from 'lucide-react';
-import * as Icons from 'lucide-react';
+import { Sparkles, ScrollText, BookOpen, Loader2, AlertTriangle } from 'lucide-react';
 
 // Helper for initial state to ensure inventory is populated before first render
 const createInitialInventory = () => {
@@ -52,16 +50,14 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false); 
 
   // --- ASSET GENERATION STATE ---
-  // Cache for generated images: itemId -> base64Url
   const [itemImages, setItemImages] = useState<Record<string, string>>({});
   const [isGeneratingAssets, setIsGeneratingAssets] = useState(false);
   const [isRateLimited, setIsRateLimited] = useState(false);
   
   const generationQueueRef = useRef<MergeItemDef[]>([]);
-  const retryDelayRef = useRef(3000); // Start with 3s delay
+  const retryDelayRef = useRef(3000); 
 
   // --- ASSET MANAGER ---
-  // On mount, queue up all item definitions for image generation if they don't exist
   useEffect(() => {
     const allItems = [
       GENERATOR_ARCHIVE_DEF, GENERATOR_ALTAR_DEF, GENERATOR_TOOLBOX_DEF, GENERATOR_GREENHOUSE_DEF, 
@@ -69,20 +65,18 @@ const App: React.FC = () => {
       ...CLUE_CHAIN, ...OCCULT_CHAIN, ...SURVIVAL_CHAIN, ...FLORA_CHAIN, ...ANATOMY_CHAIN, ...MEDIA_CHAIN, ...ALCHEMY_CHAIN
     ];
     
-    // Only queue items we haven't generated yet
     const needed = allItems.filter(item => !itemImages[item.id]);
     
     if (needed.length > 0 && generationQueueRef.current.length === 0) {
       generationQueueRef.current = needed;
       processGenerationQueue();
     }
-  }, []); // Run once on mount
+  }, []); 
 
   const processGenerationQueue = async () => {
     if (isGeneratingAssets || generationQueueRef.current.length === 0) return;
 
     setIsGeneratingAssets(true);
-    // Peek at the first item, don't remove yet in case of error
     const itemToGen = generationQueueRef.current[0];
 
     try {
@@ -92,32 +86,26 @@ const App: React.FC = () => {
         setItemImages(prev => ({ ...prev, [itemToGen.id]: imageUrl }));
       }
 
-      // Success! Remove from queue and reset delay
       generationQueueRef.current.shift();
       retryDelayRef.current = 3000; 
       setIsRateLimited(false);
 
       setIsGeneratingAssets(false);
 
-      // Continue queue with standard delay
       if (generationQueueRef.current.length > 0) {
         setTimeout(() => processGenerationQueue(), retryDelayRef.current);
       }
     } catch (error: any) {
-      // Handle Rate Limits (429)
-      console.warn(`Rate limit hit (or error). Backing off for ${retryDelayRef.current}ms...`);
+      console.warn(`Rate limit hit. Backing off for ${retryDelayRef.current}ms...`);
       setIsRateLimited(true);
       setIsGeneratingAssets(false);
       
-      // Exponential Backoff: double delay, cap at 60s
       const nextDelay = Math.min(retryDelayRef.current * 2, 60000);
       retryDelayRef.current = nextDelay;
 
-      // Retry the SAME item after delay
       setTimeout(() => processGenerationQueue(), nextDelay);
     }
   };
-
 
   // --- HELPERS ---
   const addLog = (text: string, type: 'story' | 'system' = 'system') => {
@@ -164,7 +152,6 @@ const App: React.FC = () => {
     }
 
     if (slot.item) {
-      // Check if item is a generator
       if (slot.item.id.startsWith('gen_')) {
         handleGeneratorClick(slot.item);
       } else {
@@ -229,11 +216,9 @@ const App: React.FC = () => {
 
     const isSameCategory = sourceItem.category === targetItem.category;
     const isSameLevel = sourceItem.level === targetItem.level;
-    // Generators don't merge in this version
     const isGenerator = sourceItem.id.startsWith('gen_');
     
     if (isGenerator) {
-       // Swap if target is also item/generator
        setGameState(prev => {
         const inv = { ...prev.inventory };
         inv[targetId] = { ...inv[targetId], item: sourceItem };
@@ -261,7 +246,6 @@ const App: React.FC = () => {
         });
       }
     } else {
-      // Swap
       setGameState(prev => {
         const inv = { ...prev.inventory };
         inv[targetId] = { ...inv[targetId], item: sourceItem };
@@ -308,7 +292,6 @@ const App: React.FC = () => {
       if (gameState.tasks.length <= 3) {
         const newDesc = await generateNextTask(gameState.level);
         if (newDesc && newDesc.description) {
-           // Randomly select one of the 7 categories
            const categories = [
              ItemCategory.CLUE, ItemCategory.OCCULT, ItemCategory.SURVIVAL, 
              ItemCategory.FLORA, ItemCategory.ANATOMY, ItemCategory.MEDIA, ItemCategory.ALCHEMY
@@ -343,7 +326,6 @@ const App: React.FC = () => {
     }
   };
 
-
   // --- RENDER ---
 
   const gridElements = [];
@@ -353,10 +335,10 @@ const App: React.FC = () => {
       const slot = gameState.inventory[id];
       const isSelected = selectedSlotId === id;
       
-      // Resolve image if exists
       let imageUrl = undefined;
       if (slot?.item) {
         let chain: MergeItemDef[] | undefined;
+        // Map category to chain...
         if (slot.item.category === ItemCategory.CLUE) chain = CLUE_CHAIN;
         else if (slot.item.category === ItemCategory.OCCULT) chain = OCCULT_CHAIN;
         else if (slot.item.category === ItemCategory.SURVIVAL) chain = SURVIVAL_CHAIN;
@@ -401,15 +383,16 @@ const App: React.FC = () => {
     }
   }
 
+  // Main Wrapper - Now a centered phone container
   return (
-    <div className="h-full w-full flex flex-col bg-slate-950 max-w-md mx-auto shadow-2xl overflow-hidden relative font-serif">
+    <div className="h-[95vh] w-full max-w-[430px] flex flex-col bg-slate-950 shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-xl overflow-hidden border-4 border-slate-900 relative font-serif">
       
       {/* HEADER: STORY VIEW */}
       <RenovationView stars={gameState.stars} completedTaskCount={completedTasksCount} />
 
-      {/* SUB-HEADER: LOGS ONLY (Energy Removed) */}
-      <div className="flex-none p-3 bg-slate-900 border-b border-slate-800 flex justify-between items-center z-10 shadow-md">
-        <div className="flex-1 text-center h-8 overflow-hidden flex flex-col justify-center">
+      {/* SUB-HEADER: LOGS ONLY */}
+      <div className="flex-none p-3 bg-slate-900 border-b border-slate-800 flex justify-between items-center z-10 shadow-md min-h-[50px]">
+        <div className="flex-1 text-center overflow-hidden flex flex-col justify-center">
              {logs[0] && (
                <span className={`animate-fade-in text-sm ${logs[0].type === 'story' ? 'text-red-400 italic font-serif' : 'text-slate-500'}`}>
                  "{logs[0].text}"
@@ -418,7 +401,7 @@ const App: React.FC = () => {
         </div>
         {/* Loading Indicator for Asset Gen */}
         {(generationQueueRef.current.length > 0 || isGeneratingAssets) && (
-            <div className="absolute right-2 top-2" title={isRateLimited ? "API 限制，等待中..." : "正在生成资源..."}>
+            <div className="absolute right-2 top-3" title={isRateLimited ? "API 限制，等待中..." : "正在生成资源..."}>
                 {isRateLimited ? (
                     <AlertTriangle size={12} className="text-orange-500 animate-pulse" />
                 ) : (
